@@ -1,0 +1,286 @@
+version: "3.7"
+
+services:
+
+  mongodb:
+    image: mongo:latest
+    command: [--auth]
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=$MONGO_INITDB_ROOT_USERNAME
+      - MONGO_INITDB_ROOT_PASSWORD=$MONGO_INITDB_ROOT_PASSWORD
+      - MONGO_INITDB_DATABASE=$MONGO_INITDB_DATABASE
+      - MONGO_PORT=$MONGO_PORT
+
+      - DATABASE_USERNAME=$DATABASE_USERNAME
+      - DATABASE_PASSWORD=$DATABASE_PASSWORD
+      - DATABASE_NAME=$DATABASE_NAME
+
+      - MONGO_RPC_DATABASE=$MONGO_RPC_DATABASE
+      - MONGO_CRAWL_STATE_COLL=$MONGO_CRAWL_STATE_COLL
+      - MONGO_CRAWL_RESULTS_COLL=$MONGO_CRAWL_RESULTS_COLL
+
+      - MONGO_RPC_USER=$MONGO_RPC_USER
+      - MONGO_RPC_PASS=$MONGO_RPC_PASS
+
+    volumes:
+      - mongo-data:/data/db:rw
+      - ./db/mongo/scripts:/docker-entrypoint-initdb.d:ro
+    networks:
+      - rmxnet
+
+  message_broker:
+    image: redis:latest
+    entrypoint: ["redis-server", "--requirepass", $REDIS_PASS]
+    networks:
+      - rmxnet
+
+  rabbitmq:
+    image: rabbitmq:latest
+    restart: always
+    ports:
+      - 15672
+      - 15692
+      - 5672
+    environment:
+      - RABBITMQ_DEFAULT_PASS=$RABBITMQ_DEFAULT_PASS
+      - RABBITMQ_DEFAULT_USER=$RABBITMQ_DEFAULT_USER
+      - RABBITMQ_DEFAULT_VHOST=$RABBITMQ_DEFAULT_VHOST
+    networks:
+      - rmxnet
+    volumes:
+      - ./rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins
+
+  rmxgrep:
+    build: ./services/rmxgrep
+    image: rmxgrep
+    restart: always
+    command: ./run.sh
+    volumes:
+      - container:/data/container
+    depends_on:
+      - rabbitmq
+    environment:
+      - REDIS_PASS=$REDIS_PASS
+      - BROKER_HOST_NAME=$BROKER_HOST_NAME
+      - REDIS_DB_NUMBER=$REDIS_DB_NUMBER
+      - REDIS_PORT=$REDIS_PORT
+
+      - RABBITMQ_DEFAULT_PASS=$RABBITMQ_DEFAULT_PASS
+      - RABBITMQ_DEFAULT_USER=$RABBITMQ_DEFAULT_USER
+      - RABBITMQ_DEFAULT_VHOST=$RABBITMQ_DEFAULT_VHOST
+      - RABBITMQ_HOST=$RABBITMQ_HOST
+    networks:
+      - rmxnet
+
+  rmxbotweb:
+    build: ./services/rmxbot
+    image: rmxbotweb
+    restart: always
+    entrypoint: serve
+    environment:
+      - DATABASE_USERNAME=$DATABASE_USERNAME
+      - DATABASE_PASSWORD=$DATABASE_PASSWORD
+      - DATABASE_NAME=$DATABASE_NAME
+      - MONGO_PORT=$MONGO_PORT
+      - MONGODB_LOCATION=$MONGODB_LOCATION
+
+      - REDIS_PASS=$REDIS_PASS
+      - BROKER_HOST_NAME=$BROKER_HOST_NAME
+      - REDIS_DB_NUMBER=$REDIS_DB_NUMBER
+      - REDIS_PORT=$REDIS_PORT
+
+      - RABBITMQ_DEFAULT_PASS=$RABBITMQ_DEFAULT_PASS
+      - RABBITMQ_DEFAULT_USER=$RABBITMQ_DEFAULT_USER
+      - RABBITMQ_DEFAULT_VHOST=$RABBITMQ_DEFAULT_VHOST
+      - RABBITMQ_HOST=$RABBITMQ_HOST
+    volumes:
+      - container:/data/container
+      - ./static/rmx:/var/www/rmx
+    ports:
+      - 8000
+    depends_on:
+      - mongodb
+      - rmxgrep
+      - rabbitmq
+    networks:
+      - rmxnet
+
+  rmxbotproxy:
+    image: nginx:alpine
+    volumes:
+      - ./proxy/rmxbot/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - 80:80
+    depends_on:
+      - rmxbotweb
+    networks:
+      - rmxnet
+
+  rmxbotcelery:
+    build: ./services/rmxbot
+    image: rmxbotcelery
+    restart: always
+    environment:
+      - DATABASE_USERNAME=$DATABASE_USERNAME
+      - DATABASE_PASSWORD=$DATABASE_PASSWORD
+      - DATABASE_NAME=$DATABASE_NAME
+      - MONGO_PORT=$MONGO_PORT
+      - MONGODB_LOCATION=$MONGODB_LOCATION
+
+      - REDIS_PASS=$REDIS_PASS
+      - BROKER_HOST_NAME=$BROKER_HOST_NAME
+      - REDIS_DB_NUMBER=$REDIS_DB_NUMBER
+      - REDIS_PORT=$REDIS_PORT
+
+      - RABBITMQ_DEFAULT_PASS=$RABBITMQ_DEFAULT_PASS
+      - RABBITMQ_DEFAULT_USER=$RABBITMQ_DEFAULT_USER
+      - RABBITMQ_DEFAULT_VHOST=$RABBITMQ_DEFAULT_VHOST
+      - RABBITMQ_HOST=$RABBITMQ_HOST
+    depends_on:
+      - mongodb
+      - rmxbotweb
+      - rabbitmq
+    command: ./celery.sh
+    volumes:
+      - container:/data/container
+    networks:
+      - rmxnet
+
+  scrasync:
+    build: ./services/scrasync
+    image: scrasync
+    restart: always
+    depends_on:
+      - message_broker
+      - mongodb
+      - rabbitmq
+    command: ./celery.sh
+    volumes:
+      - tmpfiles:/tmp
+    environment:
+      - REDIS_PASS=$REDIS_PASS
+      - BROKER_HOST_NAME=$BROKER_HOST_NAME
+      - REDIS_DB_NUMBER=$REDIS_DB_NUMBER
+      - REDIS_PORT=$REDIS_PORT
+
+      - RABBITMQ_DEFAULT_PASS=$RABBITMQ_DEFAULT_PASS
+      - RABBITMQ_DEFAULT_USER=$RABBITMQ_DEFAULT_USER
+      - RABBITMQ_DEFAULT_VHOST=$RABBITMQ_DEFAULT_VHOST
+      - RABBITMQ_HOST=$RABBITMQ_HOST
+
+      - MONGO_RPC_DATABASE=$MONGO_RPC_DATABASE
+      - MONGO_CRAWL_STATE_COLL=$MONGO_CRAWL_STATE_COLL
+      - MONGO_CRAWL_RESULTS_COLL=$MONGO_CRAWL_RESULTS_COLL
+
+      - MONGO_RPC_USER=$MONGO_RPC_USER
+      - MONGO_RPC_PASS=$MONGO_RPC_PASS
+      - MONGODB_LOCATION=$MONGODB_LOCATION
+      - MONGO_PORT=$MONGO_PORT
+
+    networks:
+      - rmxnet
+    stdin_open: true   # Add this line into your service
+    tty: true   # Add this line into your service
+
+  extractxt:
+    build: ./services/extractxt
+    image: extractxt
+    restart: always
+    volumes:
+      - container:/data/container
+    command: ./run.sh
+    depends_on:
+      - rabbitmq
+    ports:
+      - 8003:8003
+    environment:
+      - REDIS_PASS=$REDIS_PASS
+      - BROKER_HOST_NAME=$BROKER_HOST_NAME
+      - REDIS_DB_NUMBER=$REDIS_DB_NUMBER
+      - REDIS_PORT=$REDIS_PORT
+
+      - RABBITMQ_DEFAULT_PASS=$RABBITMQ_DEFAULT_PASS
+      - RABBITMQ_DEFAULT_USER=$RABBITMQ_DEFAULT_USER
+      - RABBITMQ_DEFAULT_VHOST=$RABBITMQ_DEFAULT_VHOST
+      - RABBITMQ_HOST=$RABBITMQ_HOST
+    networks:
+      - rmxnet
+
+  extractxt_celery:
+    build: ./services/extractxt
+    image: extractxt_celery
+    restart: always
+    depends_on:
+      - rabbitmq
+    volumes:
+      - container:/data/container
+    command: ./celery.sh
+    environment:
+      - REDIS_PASS=$REDIS_PASS
+      - BROKER_HOST_NAME=$BROKER_HOST_NAME
+      - REDIS_DB_NUMBER=$REDIS_DB_NUMBER
+      - REDIS_PORT=$REDIS_PORT
+
+      - RABBITMQ_DEFAULT_PASS=$RABBITMQ_DEFAULT_PASS
+      - RABBITMQ_DEFAULT_USER=$RABBITMQ_DEFAULT_USER
+      - RABBITMQ_DEFAULT_VHOST=$RABBITMQ_DEFAULT_VHOST
+      - RABBITMQ_HOST=$RABBITMQ_HOST
+    networks:
+      - rmxnet
+
+  rmxnmf:
+    build: ./services/rmxnmf
+    image: rmxnmf
+    restart: always
+    depends_on:
+      - rabbitmq
+    command: ./run.sh
+    volumes:
+      - container:/data/container
+    environment:
+      - REDIS_PASS=$REDIS_PASS
+      - BROKER_HOST_NAME=$BROKER_HOST_NAME
+      - REDIS_DB_NUMBER=$REDIS_DB_NUMBER
+      - REDIS_PORT=$REDIS_PORT
+
+      - RABBITMQ_DEFAULT_PASS=$RABBITMQ_DEFAULT_PASS
+      - RABBITMQ_DEFAULT_USER=$RABBITMQ_DEFAULT_USER
+      - RABBITMQ_DEFAULT_VHOST=$RABBITMQ_DEFAULT_VHOST
+      - RABBITMQ_HOST=$RABBITMQ_HOST
+    networks:
+      - rmxnet
+
+  nlp:
+    build: ./services/nlp
+    image: nlp
+    restart: always
+    depends_on:
+      - rmxnmf
+      - rabbitmq
+    command: ./celery.sh
+    volumes:
+      - container:/data/container
+      - nltk-data:/data/nltk_data
+    environment:
+      - REDIS_PASS=$REDIS_PASS
+      - BROKER_HOST_NAME=$BROKER_HOST_NAME
+      - REDIS_DB_NUMBER=$REDIS_DB_NUMBER
+      - REDIS_PORT=$REDIS_PORT
+
+      - RABBITMQ_DEFAULT_PASS=$RABBITMQ_DEFAULT_PASS
+      - RABBITMQ_DEFAULT_USER=$RABBITMQ_DEFAULT_USER
+      - RABBITMQ_DEFAULT_VHOST=$RABBITMQ_DEFAULT_VHOST
+      - RABBITMQ_HOST=$RABBITMQ_HOST
+    networks:
+      - rmxnet
+
+
+volumes:
+  container:
+  tmpfiles:
+  mongo-data:
+  nltk-data:
+
+networks:
+  rmxnet:
+
