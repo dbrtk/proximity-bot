@@ -1,0 +1,21 @@
+[submodule "static/rmx"]
+	path = static/rmx
+	url = https://github.com/dbrtk/rmx.git
+[submodule "services/rmxbot"]
+	path = services/rmxbot
+	url = https://github.com/dbrtk/rmxbot.git
+[submodule "services/scrasync"]
+	path = services/scrasync
+	url = https://github.com/dbrtk/scrasync.git
+[submodule "services/nlp"]
+	path = services/nlp
+	url = https://github.com/dbrtk/nlp.git
+[submodule "services/rmxnmf"]
+	path = services/rmxnmf
+	url = https://github.com/dbrtk/rmxnmf.git
+[submodule "services/extractxt"]
+	path = services/extractxt
+	url = https://github.com/dbrtk/extractxt.git
+[submodule "services/rmxgrep"]
+	path = services/rmxgrep
+	url = https://github.com/dbrtk/rmxgrep.git
