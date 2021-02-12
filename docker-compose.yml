@@ -50,6 +50,38 @@ services:
     volumes:
       - ./rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins
 
+  prometheus:
+    image: prom/prometheus
+    ports:
+      - 9090:9090
+    depends_on:
+      - pushgateway
+    volumes:
+      - rabbitmq_prometheus:/prometheus
+      - ./prometheus/prompushgateway.yml:/etc/prometheus/prometheus.yml:ro
+    environment:
+      - RABBITMQ_DEFAULT_VHOST=$RABBITMQ_DEFAULT_VHOST
+      - RABBITMQ_HOST=$RABBITMQ_HOST
+      - RABBITMQ_SCRASYNC_QUEUE_NAME:$RABBITMQ_SCRASYNC_QUEUE_NAME
+      - RABBITMQ_METRICS_PORT=$RABBITMQ_METRICS_PORT
+      - RABBITMQ_DEFAULT_PASS=$RABBITMQ_DEFAULT_PASS
+      - RABBITMQ_DEFAULT_USER=$RABBITMQ_DEFAULT_USER
+      - PUSHGATEWAY_HOST=$PUSHGATEWAY_HOST
+      - PUSHGATEWAY_PORT=$PUSHGATEWAY_PORT
+    command: 
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --web.enable-admin-api
+    networks:
+      - rmxnet
+
+  pushgateway:
+    image: prom/pushgateway
+    restart: always
+    ports:
+      - 9091:9091
+    networks:
+      - rmxnet
+
   rmxgrep:
     build: ./services/rmxgrep
     image: rmxgrep
@@ -93,6 +125,9 @@ services:
       - RABBITMQ_DEFAULT_USER=$RABBITMQ_DEFAULT_USER
       - RABBITMQ_DEFAULT_VHOST=$RABBITMQ_DEFAULT_VHOST
       - RABBITMQ_HOST=$RABBITMQ_HOST
+
+      - PROMETHEUS_HOST=$PROMETHEUS_HOST
+      - PROMETHEUS_PORT=$PROMETHEUS_PORT
     volumes:
       - container:/data/container
       - ./static/rmx:/var/www/rmx
@@ -136,6 +171,9 @@ services:
       - RABBITMQ_DEFAULT_USER=$RABBITMQ_DEFAULT_USER
       - RABBITMQ_DEFAULT_VHOST=$RABBITMQ_DEFAULT_VHOST
       - RABBITMQ_HOST=$RABBITMQ_HOST
+
+      - PROMETHEUS_HOST=$PROMETHEUS_HOST
+      - PROMETHEUS_PORT=$PROMETHEUS_PORT
     depends_on:
       - mongodb
       - rmxbotweb
@@ -170,17 +208,17 @@ services:
 
       - MONGO_RPC_DATABASE=$MONGO_RPC_DATABASE
       - MONGO_CRAWL_STATE_COLL=$MONGO_CRAWL_STATE_COLL
-      - MONGO_CRAWL_RESULTS_COLL=$MONGO_CRAWL_RESULTS_COLL
 
       - MONGO_RPC_USER=$MONGO_RPC_USER
       - MONGO_RPC_PASS=$MONGO_RPC_PASS
       - MONGODB_LOCATION=$MONGODB_LOCATION
       - MONGO_PORT=$MONGO_PORT
 
+      - PUSHGATEWAY_HOST=$PUSHGATEWAY_HOST
+      - PUSHGATEWAY_PORT=$PUSHGATEWAY_PORT
+
     networks:
       - rmxnet
-    stdin_open: true   # Add this line into your service
-    tty: true   # Add this line into your service
 
   extractxt:
     build: ./services/extractxt
@@ -280,6 +318,7 @@ volumes:
   tmpfiles:
   mongo-data:
   nltk-data:
+  rabbitmq_prometheus:
 
 networks:
   rmxnet:
